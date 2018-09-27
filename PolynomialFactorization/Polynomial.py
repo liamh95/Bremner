@@ -14,17 +14,14 @@ def isPrime(n):
 
 class Polynomial:
 
-	#def __init__(self, polynomial_ring, coeffs):
-	#	self.polynomial_ring = polynomial_ring
-	#	self.coefficients = coeffs
-
 	def __init__(self, coeffs, characteristic, indeterminate_symbol):
 		assert characteristic >= 0
-		assert isPrime(characteristic)
+		#assert isPrime(characteristic)
 		self.characteristic = characteristic
 		self.coefficients = coeffs
 
-		self.coefficients = [coeff % characteristic for coeff in self.coefficients]
+		if self.characteristic > 0:
+			self.coefficients = [coeff % characteristic for coeff in self.coefficients]
 
 		while self.coefficients[-1]==0 and len(self.coefficients)>1:
 			self.coefficients = self.coefficients[:-1]
@@ -71,7 +68,7 @@ class Polynomial:
 	def __mul__(self, other):
 		assert self._compatible(other)
 		if self.degree == -1 or other.degree == -1:
-			return Polynomial([0], self.characteristic, self.indeterminate_symbol)
+			return Polynomial.zero(self.characteristic, self.indeterminate_symbol)
 
 		bigger = []
 		smaller = []
@@ -98,6 +95,10 @@ class Polynomial:
 	def division_with_remainder(self, other):
 		assert self._compatible(other)
 		p = self.characteristic
+
+		if p == 0:
+			assert other.LeadingCoefficient() == 1
+
 		x = Polynomial.gen(p, self.indeterminate_symbol)
 		q = Polynomial.zero(p, self.indeterminate_symbol)
 
@@ -105,30 +106,15 @@ class Polynomial:
 			return (Polynomial.zero(p, self.indeterminate_symbol), copy(self))
 		else:
 			r = deepcopy(self)
-			inv = modinv(other.coefficients[other.degree], p)
+			if p>0:
+				inv = modinv(other.coefficients[other.degree], p)
+			else:
+				inv = 1
 			while r.degree >= other.degree:
-				# print('g = ' + str(other))
-				# print('r = ' + str(r))
-				# print('q = ' + str(q))
-				# print('r.degree = ' + str(r.degree))
-				# print('other.degree = ' + str(other.degree))
-				# if r.degree - other.degree > 1000:
-				# 	print('fucking why')
-				# 	return
-				qterm = (r.coefficients[r.degree])*inv * (x**(r.degree - other.degree))
+				qterm = (r.LeadingCoefficient())*inv * (x**(r.degree - other.degree))
 				q += qterm
 				r -= qterm * other
 			return (q, r)
-
-	#TODO: square n add?
-	# powmod
-	# def __pow__(self, exponent):
-	# 	if exponent == 0:
-	# 		return Polynomial([1], self.characteristic, self.indeterminate_symbol)
-	# 	elif exponent == 1:
-	# 		return Polynomial(self.coefficients, self.characteristic, self.indeterminate_symbol)
-	# 	else:
-	# 		return self * (self**(exponent-1))
 
 
 	def __pow__(self, exponent):
@@ -144,14 +130,12 @@ class Polynomial:
 			return Polynomial([0]*exponent + [1], self.characteristic, self.indeterminate_symbol)
 
 		# is it a power of x?
-		if self.coefficients[:self.degree] == ([0]*self.degree) and self.coefficients[-1] == 1:
+		if self.coefficients[:self.degree] == ([0]*self.degree) and self.LeadingCoefficient() == 1:
 			return Polynomial([0]*(self.degree * exponent) + [1], self.characteristic, self.indeterminate_symbol)
 		ret = copy(self)
 		for _ in range(exponent-1):
 			ret *= self
 		return ret
-
-
 
 
 	def powmod(self, exponent, modulus):
@@ -166,6 +150,9 @@ class Polynomial:
 			exponent = exponent >> 1
 			base = (base*base) % modulus
 		return ret
+
+	def LeadingCoefficient(self):
+		return self.coefficients[-1]
 
 
 	@staticmethod
@@ -182,6 +169,7 @@ class Polynomial:
 		return Polynomial([1], characteristic, indeterminate_symbol)
 
 
+	#TODO: negative numbers because we Z now
 	def __str__(self):
 		ret = ''
 		if self.degree == 0 or self.degree == -1:
@@ -219,6 +207,8 @@ class Polynomial:
 		return self.characteristic == other.characteristic and self.indeterminate_symbol == other.indeterminate_symbol
 
 
+# TODO: most of these functions could be made into static methods in Polynomial
+
 def egcd(a,b):
 	if a==0:
 		return (b, 0, 1)
@@ -235,17 +225,18 @@ def modinv(b, n):
 def division(f,g):
 	assert f.characteristic == g.characteristic
 	assert f.indeterminate_symbol == g.indeterminate_symbol
-	x = Polynomial([0,1], f.characteristic, f.indeterminate_symbol)
-	q = Polynomial([0], f.characteristic, f.indeterminate_symbol)
+	x = Polynomial.gen(f.characteristic, f.indeterminate_symbol)
+	q = Polynomial.zero(f.characteristic, f.indeterminate_symbol)
 	p = f.characteristic
 
 	if f.degree < g.degree:
-		return (Polynomial([0], p, f.indeterminate_symbol), f)
+		return (Polynomial.zero(p, f.indeterminate_symbol), f)
 	else:
-		r = Polynomial(f.coefficients.copy(), p, f.indeterminate_symbol)
+		#r = Polynomial(f.coefficients.copy(), p, f.indeterminate_symbol)
+		r = deepcopy(f)
 		inv = modinv(g.coefficients[-1], p)
 		while r.degree >= g.degree:
-			qterm = (r.coefficients[-1])*inv * (x**(r.degree - g.degree))
+			qterm = (r.LeadingCoefficient())*inv * (x**(r.degree - g.degree))
 			q += qterm
 			r -= qterm * g
 		return (q, r)
@@ -255,19 +246,19 @@ def gcd(f,g):
 	assert f.characteristic == g.characteristic
 	p = f.characteristic
 	if f.degree >= g.degree:
-		r0 = modinv(f.coefficients[-1], p) * f
-		r1 = modinv(g.coefficients[-1], p)*g
+		r0 = modinv(f.LeadingCoefficient(), p) * f
+		r1 = modinv(g.LeadingCoefficient(), p)*g
 	else:
-		r0 = modinv(g.coefficients[-1], p)*g
+		r0 = modinv(g.LeadingCoefficient(), p)*g
 		#print('f = ' + str(f))
-		r1 = modinv(f.coefficients[-1], p)*f
+		r1 = modinv(f.LeadingCoefficient(), p)*f
 
 	r = r1
 	rm = r0
 	while r.degree is not -1:
 		(qp, rp) = division(rm, r)
 		if rp.degree is not -1:
-			rp = modinv(rp.coefficients[-1], p)*rp
+			rp = modinv(rp.LeadingCoefficient(), p)*rp
 		rm = r
 		r = rp
 
@@ -279,10 +270,10 @@ def gcd(f,g):
 def poly_egcd(f,g):
 	rm = f
 	r = g
-	sm = Polynomial([1], f.characteristic, f.indeterminate_symbol)
-	tm = Polynomial([0], f.characteristic, f.indeterminate_symbol)
-	s = Polynomial([0], f.characteristic, f.indeterminate_symbol)
-	t = Polynomial([1], f.characteristic, f.indeterminate_symbol)
+	sm = Polynomial.one(f.characteristic, f.indeterminate_symbol)
+	tm = Polynomial.zero(f.characteristic, f.indeterminate_symbol)
+	s = Polynomial.zero(f.characteristic, f.indeterminate_symbol)
+	t = Polynomial.one(f.characteristic, f.indeterminate_symbol)
 
 	while r.degree is not -1:
 		(q, rp) = gcd(rm, r)
@@ -300,8 +291,8 @@ def DDD(f):
 	assert f.isSquarefree()
 
 	fd = f
-	x = Polynomial([0,1], f.characteristic, f.indeterminate_symbol)
-	gd = Polynomial([0, 1], f.characteristic, f.indeterminate_symbol)
+	x = Polynomial.gen(f.characteristic, f.indeterminate_symbol)
+	gd = Polynomial.gen(f.characteristic, f.indeterminate_symbol)
 	ret = []
 	p = f.characteristic
 
@@ -319,11 +310,11 @@ def DDD(f):
 
 def TrialSplit(h, degree):
 	#print('TrialSplit(' + str(h) + ', ' + str(degree) + ')')
-	ret = Polynomial([0], h.characteristic, h.indeterminate_symbol)
+	ret = Polynomial.zero(h.characteristic, h.indeterminate_symbol)
 	if h.degree == 1:
 		return ret
 	else:
-		g1 = Polynomial([0], h.characteristic, h.indeterminate_symbol)
+		g1 = Polynomial.zero(h.characteristic, h.indeterminate_symbol)
 		while g1.degree < 1:
 			g1 = randomPoly(h.degree - 1, h.characteristic, h.indeterminate_symbol)
 		g2 = gcd(g1, h)
@@ -342,12 +333,12 @@ def TrialSplit(h, degree):
 			if 0<g4.degree < h.degree:
 				ret = g4
 			else:
-				ret = Polynomial([0], h.characteristic, h.indeterminate_symbol)
+				ret = Polynomial.zero(h.characteristic, h.indeterminate_symbol)
 	return ret
 
 
 def Split(h, degree, s):
-	ret = Polynomial([0], h.characteristic, h.indeterminate_symbol)
+	ret = Polynomial.zero(h.characteristic, h.indeterminate_symbol)
 	k = 0
 	while ret.degree == -1 and k<s:
 		ret = TrialSplit(h, degree)
@@ -355,6 +346,7 @@ def Split(h, degree, s):
 	return ret
 
 def randomPoly(degree, characteristic, indeterminate_symbol):
+	assert characteristic > 0
 	coeffs = [randint(0, characteristic - 1) for _ in range(degree + 1)]
 	return Polynomial(coeffs, characteristic, indeterminate_symbol)
 
@@ -398,19 +390,30 @@ def Factor(f, s):
 	return complete
 
 
+#def Hensel(m, f, g1, h1, s1, t1):
+
+
+
 
 
 ####################################################
 
-x = Polynomial([0,1], 3, 'x')
+x = Polynomial.gen(0, 'x')
 
 h = (x**12) + (x**11) + 3*(x**10) + 4*(x**8) + 2*(x**7) + 4*(x**5) + 2*(x**4) + (x**3) + 2*(x**2) + (4*x) + 4
 #f = (x**12) + (x**8) + (x**6) + (x**4) + (x**2) + 1
 f = (x**10) + (x**8) + (x**7) + 2*(x**6) + 2*(x**5) + (x**4) + (x**3) + (x**2) + (2*x)
 
+
+se = 5*(x**4) + 15*(x**3) + 20*(x**2) + (20*x) + 5
+
+h1 = (x**2) + (3*x) + 2
+
 # modulus = (x**25)-x
 
 # print(h.powmod(50, modulus))
 
-for pair in Factor(f, 6):
-	print('(' + str(pair[0]) + ')^' + str(pair[1]))
+(q, r) = se.division_with_remainder(h1)
+
+print('q = ' + str(q))
+print('r = ' + str(r))
